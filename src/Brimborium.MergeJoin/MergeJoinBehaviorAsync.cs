@@ -1,28 +1,30 @@
 ﻿namespace Brimborium.MergeJoin;
 
 /// <summary>
-/// Implements a merge-join algorithm between two collections of items.
+/// Implements an asynchronous merge-join algorithm between two collections of items.
+/// This class provides the same functionality as <see cref="MergeJoinBehavior{TSource, TTarget}"/> 
+/// but with async/await support for all operations.
 /// </summary>
 /// <typeparam name="TSource">The type of the source collection items.</typeparam>
 /// <typeparam name="TTarget">The type of the target collection items.</typeparam>
-public class MergeJoinBehavior<TSource, TTarget> {
+public class MergeJoinBehaviorAsync<TSource, TTarget> {
     private readonly Func<TSource, TTarget, int>? _KeyComparer;
-    private readonly Action<TSource, TTarget>? _UpdateAction;
-    private readonly Action<TSource>? _InsertAction;
-    private readonly Action<TTarget>? _DeleteAction;
+    private readonly Func<TSource, TTarget, ValueTask>? _UpdateAction;
+    private readonly Func<TSource, ValueTask>? _InsertAction;
+    private readonly Func<TTarget, ValueTask>? _DeleteAction;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="MergeJoinBehavior{TSource, TTarget}"/> class.
+    /// Initializes a new instance of the <see cref="MergeJoinBehaviorAsync{TSource, TTarget}"/> class.
     /// </summary>
     /// <param name="keyComparer">Function to compare source and target items.</param>
     /// <param name="updateAction">Action to perform when items match.</param>
     /// <param name="insertAction">Action to perform when a source item needs to be inserted.</param>
     /// <param name="deleteAction">Action to perform when a target item needs to be deleted.</param>
-    public MergeJoinBehavior(
+    public MergeJoinBehaviorAsync(
         Func<TSource, TTarget, int>? keyComparer = default,
-        Action<TSource, TTarget>? updateAction = default,
-        Action<TSource>? insertAction = default,
-        Action<TTarget>? deleteAction = default
+        Func<TSource, TTarget, ValueTask>? updateAction = default,
+        Func<TSource, ValueTask>? insertAction = default,
+        Func<TTarget, ValueTask>? deleteAction = default
     ) {
         this._KeyComparer = keyComparer;
         this._UpdateAction = updateAction;
@@ -54,11 +56,11 @@ public class MergeJoinBehavior<TSource, TTarget> {
     /// </summary>
     /// <param name="source">The source item.</param>
     /// <param name="target">The target item to update.</param>
-    protected virtual void UpdateAction(TSource source, TTarget target) {
+    protected virtual async Task UpdateAction(TSource source, TTarget target) {
         if (this._UpdateAction is null) {
             // No update action specified, do nothing
         } else {
-            this._UpdateAction(source, target);
+            await this._UpdateAction(source, target);
         }
     }
 
@@ -66,11 +68,11 @@ public class MergeJoinBehavior<TSource, TTarget> {
     /// Handles insertion of a source item that doesn't exist in the target.
     /// </summary>
     /// <param name="source">The source item to insert.</param>
-    protected virtual void InsertAction(TSource source) {
+    protected virtual async Task InsertAction(TSource source) {
         if (this._InsertAction is null) {
             // No insert action specified, do nothing
         } else {
-            this._InsertAction(source);
+            await this._InsertAction(source);
         }
     }
 
@@ -78,11 +80,11 @@ public class MergeJoinBehavior<TSource, TTarget> {
     /// Handles deletion of a target item that doesn't exist in the source.
     /// </summary>
     /// <param name="target">The target item to delete.</param>
-    protected virtual void DeleteAction(TTarget target) {
+    protected virtual async Task DeleteAction(TTarget target) {
         if (this._DeleteAction is null) {
             // No delete action specified, do nothing
         } else {
-            this._DeleteAction(target);
+            await this._DeleteAction(target);
         }
     }
 
@@ -91,7 +93,7 @@ public class MergeJoinBehavior<TSource, TTarget> {
     /// </summary>
     /// <param name="listSource">The source collection.</param>
     /// <param name="listTarget">The target collection.</param>
-    public void Execute(IEnumerable<TSource> listSource, IEnumerable<TTarget> listTarget) {
+    public async Task Execute(IEnumerable<TSource> listSource, IEnumerable<TTarget> listTarget) {
         // Get enumerators for both collections
         var sourceEnumerator = listSource.GetEnumerator();
         var targetEnumerator = listTarget.GetEnumerator();
@@ -107,19 +109,19 @@ public class MergeJoinBehavior<TSource, TTarget> {
             var cmp = this.KeyComparer(sourceCurrent!, targetCurrent!);
             if (0 == cmp) {
                 // Items match - update target with source data
-                this.UpdateAction(sourceCurrent!, targetCurrent!);
+                await this.UpdateAction(sourceCurrent!, targetCurrent!);
                 sourceExists = sourceEnumerator.MoveNext();
                 targetExists = targetEnumerator.MoveNext();
                 sourceCurrent = sourceExists ? sourceEnumerator.Current : default;
                 targetCurrent = targetExists ? targetEnumerator.Current : default;
             } else if (0 > cmp) {
                 // Source item comes before target - insert source item
-                this.InsertAction(sourceCurrent!);
+                await this.InsertAction(sourceCurrent!);
                 sourceExists = sourceEnumerator.MoveNext();
                 sourceCurrent = sourceExists ? sourceEnumerator.Current : default;
             } else {
                 // Target item comes before source - delete target item
-                this.DeleteAction(targetCurrent!);
+                await this.DeleteAction(targetCurrent!);
                 targetExists = targetEnumerator.MoveNext();
                 targetCurrent = targetExists ? targetEnumerator.Current : default;
             }
@@ -133,7 +135,7 @@ public class MergeJoinBehavior<TSource, TTarget> {
         // Process remaining source items (all inserts)
         if (sourceExists && !targetExists) {
             while (sourceExists) {
-                this.InsertAction(sourceCurrent!);
+                await this.InsertAction(sourceCurrent!);
                 sourceExists = sourceEnumerator.MoveNext();
                 sourceCurrent = sourceExists ? sourceEnumerator.Current : default;
             }
@@ -143,7 +145,7 @@ public class MergeJoinBehavior<TSource, TTarget> {
         // Process remaining target items (all deletes)
         if (!sourceExists && targetExists) {
             while (targetExists) {
-                this.DeleteAction(targetCurrent!);
+                await this.DeleteAction(targetCurrent!);
                 targetExists = targetEnumerator.MoveNext();
                 targetCurrent = targetExists ? targetEnumerator.Current : default;
             }
