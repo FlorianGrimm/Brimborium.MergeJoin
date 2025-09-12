@@ -20,7 +20,7 @@ public class MergeJoinBehaviorTests {
         var act = ExecuteMergeJoin(
             new List<SourceData>() { new SourceData(1, "A"), new SourceData(2, "B"), new SourceData(3, "C"), new SourceData(4, "D") },
             new List<TargetData>() { new TargetData(1, "A"), new TargetData(3, "C") });
-        
+
         await Assert.That(act.Inserts).IsEquivalentTo(new List<SourceData>() {
             new SourceData(2, "B"), new SourceData(4, "D")
         });
@@ -36,7 +36,7 @@ public class MergeJoinBehaviorTests {
         var act = ExecuteMergeJoin(
             new List<SourceData>() { new SourceData(1, "A"), new SourceData(3, "C") },
             new List<TargetData>() { new TargetData(1, "A"), new TargetData(2, "B"), new TargetData(3, "C"), new TargetData(4, "D") });
-        
+
         await Assert.That(act.Inserts).IsEquivalentTo(new List<SourceData>());
         await Assert.That(act.Updates).IsEquivalentTo(new List<PairData>() {
             new PairData(new SourceData(1, "A"), new TargetData(1, "A")),
@@ -52,7 +52,7 @@ public class MergeJoinBehaviorTests {
         var act = ExecuteMergeJoin(
             new List<SourceData>(),
             new List<TargetData>() { new TargetData(1, "A"), new TargetData(2, "B"), new TargetData(3, "C") });
-        
+
         await Assert.That(act.Inserts).IsEquivalentTo(new List<SourceData>());
         await Assert.That(act.Updates).IsEquivalentTo(new List<PairData>());
         await Assert.That(act.Deletes).IsEquivalentTo(new List<TargetData>() {
@@ -65,7 +65,7 @@ public class MergeJoinBehaviorTests {
         var act = ExecuteMergeJoin(
             new List<SourceData>() { new SourceData(1, "A"), new SourceData(2, "B"), new SourceData(3, "C") },
             new List<TargetData>());
-        
+
         await Assert.That(act.Inserts).IsEquivalentTo(new List<SourceData>() {
             new SourceData(1, "A"), new SourceData(2, "B"), new SourceData(3, "C")
         });
@@ -78,7 +78,7 @@ public class MergeJoinBehaviorTests {
         var act = ExecuteMergeJoin(
             new List<SourceData>() { new SourceData(1, "A"), new SourceData(3, "C"), new SourceData(5, "E") },
             new List<TargetData>() { new TargetData(2, "B"), new TargetData(4, "D"), new TargetData(6, "F") });
-        
+
         await Assert.That(act.Inserts).IsEquivalentTo(new List<SourceData>() {
             new SourceData(1, "A"), new SourceData(3, "C"), new SourceData(5, "E")
         });
@@ -93,7 +93,7 @@ public class MergeJoinBehaviorTests {
         var act = ExecuteMergeJoin(
             new List<SourceData>() { new SourceData(1, "A"), new SourceData(2, "Updated B"), new SourceData(3, "C") },
             new List<TargetData>() { new TargetData(1, "A"), new TargetData(2, "B"), new TargetData(3, "C") });
-        
+
         await Assert.That(act.Inserts).IsEquivalentTo(new List<SourceData>());
         await Assert.That(act.Updates).IsEquivalentTo(new List<PairData>() {
             new PairData(new SourceData(1, "A"), new TargetData(1, "A")),
@@ -101,6 +101,29 @@ public class MergeJoinBehaviorTests {
             new PairData(new SourceData(3, "C"), new TargetData(3, "C"))
         });
         await Assert.That(act.Deletes).IsEquivalentTo(new List<TargetData>());
+    }
+
+    [Test]
+    public async Task SoureIsNotSortedFailedTest() {
+        Assert.Throws<ArgumentException>(() => {
+            var listSource = new List<SourceData>() { new SourceData(2, "Updated B"), new SourceData(1, "A"), new SourceData(3, "C") };
+            var listTarget = new List<TargetData>() { new TargetData(1, "A"), new TargetData(2, "B"), new TargetData(3, "C") };
+            var result = new MergeJoinBehaviorForTest();
+            result.Execute(listSource, listTarget);
+
+        });
+        await Task.CompletedTask;
+    }
+
+    [Test]
+    public async Task TargetIsNotSortedFailedTest() {
+        Assert.Throws<ArgumentException>(() => {
+            var listSource = new List<SourceData>() { new SourceData(1, "A"), new SourceData(2, "Updated B"), new SourceData(3, "C") };
+            var listTarget = new List<TargetData>() { new TargetData(2, "B"), new TargetData(1, "A"), new TargetData(3, "C") };
+            var result = new MergeJoinBehaviorForTest();
+            result.Execute(listSource, listTarget);
+        });
+        await Task.CompletedTask;
     }
 
     private MergeJoinBehaviorForTest ExecuteMergeJoin(
@@ -128,6 +151,15 @@ public class MergeJoinBehaviorForTest : MergeJoinBehavior<SourceData, TargetData
     protected override int KeyComparer(SourceData source, TargetData target) {
         return this._Comparer.Compare(source.Id, target.Id);
     }
+
+    protected override int SourceCompare(SourceData before, SourceData after) {
+        return this._Comparer.Compare(before.Id, after.Id);
+    }
+
+    protected override int TargetCompare(TargetData before, TargetData after) {
+        return this._Comparer.Compare(before.Id, after.Id);
+    }
+
     public List<SourceData> Inserts { get; } = new();
     protected override void InsertAction(SourceData source) {
         this.Inserts.Add(source);
