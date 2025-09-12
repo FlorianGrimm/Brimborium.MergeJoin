@@ -48,6 +48,17 @@ public class MergeJoinBehaviorAsyncTests {
         });
     }
 
+      [Test]
+    public async Task BothCollectionsEmptyTest() {
+        var act = await ExecuteMergeJoinAsync(
+            new List<SourceData>(),
+            new List<TargetData>());
+
+        await Assert.That(act.Inserts).IsEquivalentTo(new List<SourceData>());
+        await Assert.That(act.Updates).IsEquivalentTo(new List<PairData>());
+        await Assert.That(act.Deletes).IsEquivalentTo(new List<TargetData>());
+    }
+
     [Test]
     public async Task EmptySourceTest() {
         var act = await ExecuteMergeJoinAsync(
@@ -72,6 +83,34 @@ public class MergeJoinBehaviorAsyncTests {
         });
         await Assert.That(act.Updates).IsEquivalentTo(new List<PairData>());
         await Assert.That(act.Deletes).IsEquivalentTo(new List<TargetData>());
+    }
+
+   [Test]
+    public async Task SingleItemInEachCollectionMatchTest() {
+        var act = await ExecuteMergeJoinAsync(
+            new List<SourceData>() { new SourceData(1, "A") },
+            new List<TargetData>() { new TargetData(1, "A") });
+
+        await Assert.That(act.Inserts).IsEquivalentTo(new List<SourceData>());
+        await Assert.That(act.Updates).IsEquivalentTo(new List<PairData>() {
+            new PairData(new SourceData(1, "A"), new TargetData(1, "A"))
+        });
+        await Assert.That(act.Deletes).IsEquivalentTo(new List<TargetData>());
+    }
+
+    [Test]
+    public async Task SingleItemInEachCollectionNoMatchTest() {
+        var act = await ExecuteMergeJoinAsync(
+            new List<SourceData>() { new SourceData(1, "A") },
+            new List<TargetData>() { new TargetData(2, "B") });
+
+        await Assert.That(act.Inserts).IsEquivalentTo(new List<SourceData>() {
+            new SourceData(1, "A")
+        });
+        await Assert.That(act.Updates).IsEquivalentTo(new List<PairData>());
+        await Assert.That(act.Deletes).IsEquivalentTo(new List<TargetData>() {
+            new TargetData(2, "B")
+        });
     }
 
     [Test]
@@ -102,6 +141,40 @@ public class MergeJoinBehaviorAsyncTests {
             new PairData(new SourceData(3, "C"), new TargetData(3, "C"))
         });
         await Assert.That(act.Deletes).IsEquivalentTo(new List<TargetData>());
+    }
+
+
+    [Test]
+    public async Task LargeCollectionsTest() {
+        var sourceData = Enumerable.Range(1, 1000).Select(i => new SourceData(i, $"Source{i}")).ToList();
+        var targetData = Enumerable.Range(500, 1000).Select(i => new TargetData(i, $"Target{i}")).ToList();
+
+        var act = await ExecuteMergeJoinAsync(sourceData, targetData);
+
+        // Items 1-499 should be inserts (source only)
+        await Assert.That(act.Inserts.Count).IsEqualTo(499);
+        // Items 500-1000 should be updates (in both)
+        await Assert.That(act.Updates.Count).IsEqualTo(501);
+        // Items 1001-1499 should be deletes (target only)
+        await Assert.That(act.Deletes.Count).IsEqualTo(499);
+    }
+
+    [Test]
+    public async Task DuplicateKeysInSourceTest() {
+        await Assert.ThrowsAsync<ArgumentException>(async () => {
+            _ = await ExecuteMergeJoinAsync(
+                new List<SourceData>() { new SourceData(1, "A1"), new SourceData(1, "A2"), new SourceData(2, "B") },
+                new List<TargetData>() { new TargetData(1, "A"), new TargetData(2, "B") });
+        });
+    }
+
+    [Test]
+    public async Task DuplicateKeysInTargetTest() {
+        await Assert.ThrowsAsync<ArgumentException>(async () => {
+            _ = await ExecuteMergeJoinAsync(
+            new List<SourceData>() { new SourceData(1, "A"), new SourceData(2, "B") },
+            new List<TargetData>() { new TargetData(1, "A1"), new TargetData(1, "A2"), new TargetData(2, "B") });
+        });
     }
 
     private async Task<MergeJoinBehaviorAsyncForTest> ExecuteMergeJoinAsync(

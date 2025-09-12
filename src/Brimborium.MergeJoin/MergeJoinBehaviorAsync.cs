@@ -22,6 +22,8 @@ public class MergeJoinBehaviorAsync<TSource, TTarget> {
     /// <param name="updateAction">Action to perform when items match.</param>
     /// <param name="insertAction">Action to perform when a source item needs to be inserted.</param>
     /// <param name="deleteAction">Action to perform when a target item needs to be deleted.</param>
+    /// <param name="keyComparerSource">Function to compare source items.</param>
+    /// <param name="keyComparerTarget">Function to compare target items.</param>
     public MergeJoinBehaviorAsync(
         Func<TSource, TTarget, int>? keyComparer = default,
         Func<TSource, TTarget, ValueTask>? updateAction = default,
@@ -62,8 +64,10 @@ public class MergeJoinBehaviorAsync<TSource, TTarget> {
         if (sourceExists) {
             var sourceAfter = sourceEnumerator.Current;
             var result = this.SourceCompare(sourceCurrent, sourceAfter);
-            if (result <= 0) {
+            if (result < 0) {
                 sourceCurrent = sourceAfter;
+            } else if (result == 0){
+                throw new System.ArgumentException("Source is not unique.");
             } else {
                 throw new System.ArgumentException("Source is not sorted.");
             }
@@ -75,14 +79,27 @@ public class MergeJoinBehaviorAsync<TSource, TTarget> {
         if (targetExists) {
             var targetAfter = targetEnumerator.Current;
             var result = this.TargetCompare(targetCurrent, targetAfter);
-            if (result <= 0) {
+            if (result < 0) {
                 targetCurrent = targetAfter;
+            } else if (result == 0){
+                throw new System.ArgumentException("Target is not unique.");
             } else {
                 throw new System.ArgumentException("Target is not sorted.");
             }
         }
     }
 
+    /// <summary>
+    /// Compares two source items to validate sorting order.
+    /// </summary>
+    /// <param name="before">The first source item.</param>
+    /// <param name="after">The second source item.</param>
+    /// <returns>
+    /// A negative value if before comes before after;
+    /// zero if they are equal;
+    /// a positive value if before comes after after.
+    /// Returns 0 if no source comparer is provided.
+    /// </returns>
     protected virtual int SourceCompare(TSource before, TSource after) {
         if (this._KeyComparerSource is { } keyComparerSource) {
             return keyComparerSource(before, after);
@@ -90,6 +107,17 @@ public class MergeJoinBehaviorAsync<TSource, TTarget> {
         return 0;
     }
 
+    /// <summary>
+    /// Compares two target items to validate sorting order.
+    /// </summary>
+    /// <param name="before">The first target item.</param>
+    /// <param name="after">The second target item.</param>
+    /// <returns>
+    /// A negative value if before comes before after;
+    /// zero if they are equal;
+    /// a positive value if before comes after after.
+    /// Returns 0 if no target comparer is provided.
+    /// </returns>
     protected virtual int TargetCompare(TTarget before, TTarget after) {
         if (this._KeyComparerTarget is { } keyComparerTarget) {
             return keyComparerTarget(before, after);
